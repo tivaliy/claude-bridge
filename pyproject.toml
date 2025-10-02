@@ -1,0 +1,142 @@
+[project]
+name = "claude-bridge"
+dynamic = ["version"]
+description = "API gateway for Claude Code with Anthropic API compatibility"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    {name = "Claude Bridge Contributors"}
+]
+keywords = ["claude", "anthropic", "api", "bridge", "gateway"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "fastapi>=0.118.0",
+    "uvicorn[standard]>=0.37.0",
+    "pydantic>=2.11.9",
+    "pydantic-settings>=2.11.0",
+]
+
+[project.scripts]
+# CLI entry point - allows running with: claude-bridge, uv run claude-bridge, or uvx claude-bridge
+claude-bridge = "claude_bridge.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+    "httpx>=0.26.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.5.0",
+]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning>0.8.2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+fallback-version = "0.0.0"
+
+# Ruff configuration
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = [
+    ".venv",
+    "venv",
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# Bandit security linting configuration
+[tool.bandit]
+exclude_dirs = [".venv", "venv", "build", "dist", ".mypy_cache", ".pytest_cache", "tests"]
+skips = ["B104"]  # Skip hardcoded_bind_all_interfaces (intentional for server config)
+
+# Mypy type checking configuration
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+explicit_package_bases = true
+mypy_path = "src"
+namespace_packages = true
+
+# Pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--cov=src/claude_bridge",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+fail_under = 80.0
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]

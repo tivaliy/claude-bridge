@@ -1,0 +1,80 @@
+# Pre-commit hooks configuration
+# See https://pre-commit.com for more information
+
+default_language_version:
+  python: python3.12
+
+repos:
+  # Standard pre-commit hooks for file hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # Remove trailing whitespace
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+      # Ensure files end with newline
+      - id: end-of-file-fixer
+
+      # Validate syntax
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-ast
+
+      # Prevent large files (>500KB)
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+
+      # Detect merge conflict markers
+      - id: check-merge-conflict
+
+      # Prevent debug statements
+      - id: debug-statements
+
+      # Check docstring is first
+      - id: check-docstring-first
+
+      # Detect private keys
+      - id: detect-private-key
+
+      # Fix mixed line endings
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+      # Check for files that would conflict on case-insensitive filesystems
+      - id: check-case-conflict
+
+  # Ruff - Fast Python linter and formatter (replaces black, isort, flake8, etc.)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      # Linter with auto-fix
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        exclude: ^(\.venv|build|dist)/
+
+      # Formatter (replaces black)
+      - id: ruff-format
+        exclude: ^(\.venv|build|dist)/
+
+  # Type checking with mypy (normal mode)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - pydantic>=2.5.0
+          - types-setuptools
+        args: [--ignore-missing-imports, --show-error-codes]
+        files: ^src/
+        exclude: ^(\.venv|build|dist)/
+
+  # Security linting with bandit
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml]
+        additional_dependencies: ["bandit[toml]"]
+        exclude: ^(\.venv|build|dist)/

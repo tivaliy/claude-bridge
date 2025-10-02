@@ -1,0 +1,121 @@
+{
+  "success_response": {
+    "type": "result",
+    "subtype": "success",
+    "result": "Hello! I'm Claude, an AI assistant. How can I help you today?",
+    "usage": {
+      "input_tokens": 15,
+      "output_tokens": 18
+    },
+    "is_error": false
+  },
+  "error_response": {
+    "type": "result",
+    "subtype": "error",
+    "result": "Model not found",
+    "is_error": true
+  },
+  "streaming_chunks": [
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start",
+        "message": {
+          "id": "msg_test123",
+          "type": "message",
+          "role": "assistant",
+          "content": [],
+          "model": "claude-sonnet-4",
+          "stop_reason": null
+        }
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "Hello"
+        }
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " there!"
+        }
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_stop",
+        "index": 0
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "end_turn"
+        },
+        "usage": {
+          "output_tokens": 3
+        }
+      }
+    }
+  ],
+  "legacy_streaming_chunks": [
+    {
+      "type": "assistant",
+      "message": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Hello"
+          }
+        ],
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "type": "assistant",
+      "message": {
+        "content": [
+          {
+            "type": "text",
+            "text": " world"
+          }
+        ]
+      }
+    },
+    {
+      "type": "result",
+      "usage": {
+        "input_tokens": 10,
+        "output_tokens": 2
+      }
+    }
+  ]
+}
