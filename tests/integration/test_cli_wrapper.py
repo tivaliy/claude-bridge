@@ -230,6 +230,61 @@ class TestCLIWrapperNonStreamingResponse:
             # Should yield nothing for empty stdout
             assert len(results) == 0
 
+    @pytest.mark.asyncio
+    async def test_non_streaming_parses_json_array_result(
+        self, mock_subprocess_process, cli_array_result_response
+    ):
+        """CLI --output-format json returns a JSON array of events.
+
+        Regression for Claude CLI 2.1.158: the wrapper must extract the
+        ``type == "result"`` element instead of calling .get() on the list.
+        """
+        cli = ClaudeCLIWrapper()
+        process = mock_subprocess_process(
+            returncode=0, stdout=json.dumps(cli_array_result_response)
+        )
+
+        with patch("asyncio.create_subprocess_exec", return_value=process):
+            results = []
+            async for result in cli.query("Hello"):
+                results.append(result)
+
+            assert len(results) == 1
+            assert results[0]["result"] == "Hello there"
+            assert results[0]["usage"]["output_tokens"] == 3
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_array_is_error_raises(self, mock_subprocess_process):
+        """An ``is_error`` result inside the JSON array must raise."""
+        cli = ClaudeCLIWrapper()
+        cli_array = [
+            {"type": "system", "subtype": "init"},
+            {
+                "type": "result",
+                "subtype": "error",
+                "is_error": True,
+                "result": "Model not found",
+            },
+        ]
+        process = mock_subprocess_process(returncode=0, stdout=json.dumps(cli_array))
+
+        with patch("asyncio.create_subprocess_exec", return_value=process):
+            with pytest.raises(RuntimeError, match="Model not found"):
+                async for _ in cli.query("Hello"):
+                    pass
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_array_without_result_raises(self, mock_subprocess_process):
+        """A JSON array with no result element is an error, not a silent no-op."""
+        cli = ClaudeCLIWrapper()
+        cli_array = [{"type": "system", "subtype": "init"}]
+        process = mock_subprocess_process(returncode=0, stdout=json.dumps(cli_array))
+
+        with patch("asyncio.create_subprocess_exec", return_value=process):
+            with pytest.raises(RuntimeError, match="no result"):
+                async for _ in cli.query("Hello"):
+                    pass
+
 
 class TestCLIWrapperStreamingResponse:
     @pytest.mark.asyncio

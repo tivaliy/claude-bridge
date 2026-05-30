@@ -47,6 +47,7 @@ async def stream_anthropic_response(
     message_id = f"msg_{uuid.uuid4().hex[:24]}"
     content_index = 0
     content_started = False
+    emitted_delta_text = False
     output_tokens = 0
     input_tokens = 0
     started = time.perf_counter()
@@ -92,20 +93,29 @@ async def stream_anthropic_response(
 
                 # Handle content_block_start
                 elif event_type == "content_block_start":
-                    if not content_started:
+                    # Only surface text blocks. Thinking blocks are internal and
+                    # the bridge response schema supports text content only.
+                    content_block = event.get("content_block", {})
+                    if content_block.get("type") == "text" and not content_started:
                         content_started = True
-                        # Forward the content_block_start event
                         yield "event: content_block_start\n"
                         yield f"data: {json.dumps({
                             'type': 'content_block_start',
-                            'index': event.get('index', 0),
-                            'content_block': event.get('content_block', {'type': 'text', 'text': ''})
+                            'index': content_index,
+                            'content_block': {'type': 'text', 'text': ''}
                         })}\n\n"
                     continue
 
                 # Handle content_block_delta - THIS IS THE KEY FOR REAL-TIME STREAMING!
                 elif event_type == "content_block_delta":
-                    # Send content_block_start before first delta
+                    delta = event.get("delta", {})
+
+                    # Ignore thinking_delta / signature_delta — only visible
+                    # assistant text is streamed to the client.
+                    if delta.get("type") != "text_delta":
+                        continue
+
+                    # Send content_block_start before first text delta
                     if not content_started:
                         content_started = True
                         yield "event: content_block_start\n"
@@ -115,10 +125,10 @@ async def stream_anthropic_response(
                             'content_block': {'type': 'text', 'text': ''}
                         })}\n\n"
 
-                    delta = event.get("delta", {})
                     text = delta.get("text", "")
 
                     if text:
+                        emitted_delta_text = True
                         output_tokens += len(text.split())
 
                         yield "event: content_block_delta\n"
@@ -144,20 +154,27 @@ async def stream_anthropic_response(
             if chunk_type == "assistant":
                 message = chunk.get("message", {})
                 content = message.get("content", [])
+                text_blocks = [
+                    b for b in content if isinstance(b, dict) and b.get("type") == "text"
+                ]
 
-                # First content chunk - send content_block_start
-                if not content_started and content:
-                    yield "event: content_block_start\n"
-                    yield f"data: {json.dumps({
-                        'type': 'content_block_start',
-                        'index': content_index,
-                        'content_block': {'type': 'text', 'text': ''}
-                    })}\n\n"
-                    content_started = True
+                # When --include-partial-messages is active the CLI also emits a
+                # buffered assistant message that duplicates the incremental
+                # stream_event deltas. Only use it as a fallback when no partial
+                # text was streamed (legacy mode).
+                if text_blocks and not emitted_delta_text:
+                    # First content chunk - send content_block_start
+                    if not content_started:
+                        yield "event: content_block_start\n"
+                        yield f"data: {json.dumps({
+                            'type': 'content_block_start',
+                            'index': content_index,
+                            'content_block': {'type': 'text', 'text': ''}
+                        })}\n\n"
+                        content_started = True
 
-                # Send content_block_delta for each text block
-                for block in content:
-                    if block.get("type") == "text":
+                    # Send content_block_delta for each text block
+                    for block in text_blocks:
                         text = block.get("text", "")
                         if text:
                             # Estimate tokens (rough approximation)

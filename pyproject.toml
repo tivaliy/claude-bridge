@@ -15,10 +15,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "fastapi>=0.118.0",
-    "uvicorn[standard]>=0.37.0",
-    "pydantic>=2.11.9",
-    "pydantic-settings>=2.11.0",
+    "fastapi>=0.136.0",
+    "uvicorn[standard]>=0.48.0",
+    "pydantic>=2.13.0",
+    "pydantic-settings>=2.14.0",
 ]
 
 [project.scripts]

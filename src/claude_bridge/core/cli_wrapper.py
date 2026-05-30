@@ -30,6 +30,25 @@ class ClaudeCLIWrapper:
         self.cli_path = cli_path
         self.cwd = str(cwd) if cwd else None
 
+    @staticmethod
+    def _extract_result_payload(parsed: Any) -> dict[str, Any] | None:
+        """Extract the CLI 'result' object from parsed --output-format json output.
+
+        Claude CLI emits a JSON array of events (system/assistant/result/...); the
+        element with ``type == "result"`` carries the final text, usage, and
+        is_error flag. A bare dict (older/simple output) is returned as-is.
+
+        Returns None if no result object can be located.
+        """
+        if isinstance(parsed, list):
+            for event in reversed(parsed):
+                if isinstance(event, dict) and event.get("type") == "result":
+                    return event
+            return None
+        if isinstance(parsed, dict):
+            return parsed
+        return None
+
     async def query(
         self,
         prompt: str,
@@ -255,13 +274,15 @@ class ClaudeCLIWrapper:
                 error_msg = None
                 if stdout_msg:
                     try:
-                        result = json.loads(stdout_msg)
-                        if result.get("is_error", False):
-                            # Extract the error message from the result field
-                            error_msg = result.get("result", "Unknown CLI error")
+                        parsed = json.loads(stdout_msg)
                     except json.JSONDecodeError:
                         # stdout is not JSON, use it as-is
                         error_msg = stdout_msg.strip()
+                    else:
+                        result = self._extract_result_payload(parsed)
+                        if result is not None and result.get("is_error", False):
+                            # Extract the error message from the result field
+                            error_msg = result.get("result", "Unknown CLI error")
 
                 # Fall back to stderr if we couldn't extract from stdout
                 if not error_msg and stderr_msg:
@@ -283,13 +304,7 @@ class ClaudeCLIWrapper:
 
             if stdout:
                 try:
-                    result = json.loads(stdout.decode())
-                    # Check if CLI returned an error in the JSON
-                    if result.get("is_error", False):
-                        error_msg = result.get("result", "Unknown CLI error")
-                        logger.warning("CLI returned is_error flag", extra={"error": error_msg})
-                        raise RuntimeError(f"Claude CLI error: {error_msg}")
-                    yield result
+                    parsed = json.loads(stdout.decode())
                 except json.JSONDecodeError as e:
                     stdout_preview = stdout.decode()[:500]
                     logger.error(
@@ -299,6 +314,25 @@ class ClaudeCLIWrapper:
                     raise RuntimeError(
                         f"Failed to parse CLI output: {e}. Output preview: {stdout_preview}"
                     ) from e
+
+                # CLI --output-format json returns an array of events; pull the result.
+                result = self._extract_result_payload(parsed)
+                if result is None:
+                    stdout_preview = stdout.decode()[:500]
+                    logger.error(
+                        "CLI output contained no result object",
+                        extra={"stdout_preview": stdout_preview},
+                    )
+                    raise RuntimeError(
+                        f"Claude CLI returned no result object. Output preview: {stdout_preview}"
+                    )
+
+                # Check if CLI returned an error in the JSON
+                if result.get("is_error", False):
+                    error_msg = result.get("result", "Unknown CLI error")
+                    logger.warning("CLI returned is_error flag", extra={"error": error_msg})
+                    raise RuntimeError(f"Claude CLI error: {error_msg}")
+                yield result
 
         duration = time.perf_counter() - start_time
         logger.debug(

@@ -206,7 +206,132 @@ class TestStreamAnthropicResponse:
         event_types = [self._extract_event_type(e) for e in events]
         assert "content_block_delta" in event_types
 
+    async def test_partial_and_buffered_text_not_duplicated(self, make_async_iter):
+        """With --include-partial-messages the CLI emits BOTH incremental
+        stream_event deltas AND a buffered assistant message for the same text.
+
+        Regression: the bridge must emit each text chunk exactly once.
+        """
+        cli_chunks = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": "Hello"},
+                },
+            },
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": " world"},
+                },
+            },
+            # Buffered full message the CLI also emits (must NOT be re-emitted)
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "text", "text": "Hello world"}]},
+            },
+            {"type": "result", "usage": {"input_tokens": 4, "output_tokens": 2}},
+        ]
+
+        emitted_text = self._collect_delta_text(
+            [e async for e in stream_anthropic_response(make_async_iter(cli_chunks), "haiku")]
+        )
+
+        assert emitted_text == "Hello world"
+
+    async def test_thinking_blocks_are_not_emitted_as_text(self, make_async_iter):
+        """Thinking models emit a thinking content block before the text block.
+
+        The bridge response schema only supports text; thinking blocks must be
+        skipped and the visible content_block_start must be of type 'text'.
+        """
+        cli_chunks = [
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "thinking", "thinking": ""},
+                },
+            },
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "delta": {"type": "thinking_delta", "thinking": "let me ponder"},
+                },
+            },
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "delta": {"type": "signature_delta", "signature": "abc"},
+                },
+            },
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_start",
+                    "index": 1,
+                    "content_block": {"type": "text", "text": ""},
+                },
+            },
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": "Answer"},
+                },
+            },
+        ]
+
+        events = [e async for e in stream_anthropic_response(make_async_iter(cli_chunks), "haiku")]
+
+        # No thinking content_block_start may leak to the client.
+        for event in events:
+            if "content_block_start" in event:
+                data = self._extract_event_data(event)
+                if data:
+                    assert data.get("content_block", {}).get("type") == "text"
+
+        # Only the visible answer text is streamed, exactly once.
+        assert self._collect_delta_text(events) == "Answer"
+
+    async def test_realistic_thinking_stream_from_fixture(
+        self, make_async_iter, cli_streaming_chunks_with_thinking
+    ):
+        """End-to-end: real CLI stream (thinking block + text deltas + buffered
+        assistant duplicate + result) yields the answer exactly once, no thinking.
+        """
+        events = [
+            e
+            async for e in stream_anthropic_response(
+                make_async_iter(cli_streaming_chunks_with_thinking), "haiku"
+            )
+        ]
+
+        for event in events:
+            if "content_block_start" in event:
+                data = self._extract_event_data(event)
+                if data:
+                    assert data.get("content_block", {}).get("type") == "text"
+
+        assert self._collect_delta_text(events) == "Answer"
+
     # Helper methods
+    def _collect_delta_text(self, events: list[str]) -> str:
+        """Concatenate text from all content_block_delta text_delta events."""
+        text = ""
+        for event in events:
+            if "content_block_delta" not in event:
+                continue
+            data = self._extract_event_data(event)
+            if data and data.get("delta", {}).get("type") == "text_delta":
+                text += data["delta"].get("text", "")
+        return text
+
     def _extract_event_type(self, sse_event: str) -> str | None:
         for line in sse_event.split("\n"):
             if line.startswith("event: "):

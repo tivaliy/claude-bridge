@@ -138,6 +138,18 @@ def cli_legacy_streaming_chunks(cli_responses):
     return cli_responses["legacy_streaming_chunks"]
 
 
+@pytest.fixture
+def cli_array_result_response(cli_responses):
+    """Raw CLI --output-format json output (JSON array of events, CLI 2.1.158+)."""
+    return cli_responses["array_result_response"]
+
+
+@pytest.fixture
+def cli_streaming_chunks_with_thinking(cli_responses):
+    """CLI streaming output including a thinking block and a buffered duplicate."""
+    return cli_responses["streaming_chunks_with_thinking"]
+
+
 # Anthropic request generators
 @pytest.fixture
 def simple_anthropic_request(anthropic_requests):
