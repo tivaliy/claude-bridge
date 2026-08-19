@@ -1,6 +1,7 @@
 """FastAPI application factory for Claude Bridge."""
 
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,11 +12,31 @@ from .config import settings
 from .core.claude_client import ClaudeClient
 
 
+def _warn_if_no_api_key(logger: logging.Logger) -> None:
+    """Warn when the CLI will fall back to subscription OAuth.
+
+    The bridge holds no credentials of its own; the CLI authenticates with either an
+    API key or a Pro/Max subscription token. Anthropic reserves the latter for ordinary
+    interactive use of Claude Code, not for fronting an HTTP API, so an operator who
+    reaches this state should know they are in it rather than discover it later.
+    """
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return
+    logger.warning(
+        "No ANTHROPIC_API_KEY in the environment: the Claude CLI will authenticate with "
+        "whatever it has, which is usually a Pro/Max subscription token. Anthropic's terms "
+        "reserve that credential for ordinary interactive use of Claude Code and direct "
+        "developers to API keys instead, so do not serve other users from this instance. "
+        "See https://code.claude.com/docs/en/legal-and-compliance"
+    )
+
+
 def create_app() -> FastAPI:
     """Create and configure FastAPI application."""
     settings.configure_logging()
     logger = logging.getLogger("claude_bridge.app")
     logger.debug("Initializing FastAPI application")
+    _warn_if_no_api_key(logger)
 
     app = FastAPI(
         title=settings.app_name,
