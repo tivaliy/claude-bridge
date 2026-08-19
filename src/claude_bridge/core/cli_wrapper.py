@@ -111,8 +111,11 @@ class ClaudeCLIWrapper:
         if system_prompt:
             cmd.extend(["--append-system-prompt", system_prompt])
 
-        # Add tool permissions from configuration
-        # If file_paths are provided, validate configuration and use settings
+        # Tool availability. --tools is a positive gate over the CLI's built-in set:
+        # "" makes none of them available, so a request gets no filesystem access at
+        # all. This is what bounds an unknown future tool, which the deny-list below
+        # cannot. --allowed-tools is passed alongside it because availability and
+        # approval are separate under bypassPermissions.
         if file_paths:
             # Check if tools configured
             if not settings.claude_allowed_tools_str.strip():
@@ -132,6 +135,7 @@ class ClaudeCLIWrapper:
             allowed_tools_list = [
                 t.strip() for t in settings.claude_allowed_tools_str.split(",") if t.strip()
             ]
+            cmd.extend(["--tools", ",".join(allowed_tools_list)])
             cmd.extend(["--allowed-tools", " ".join(allowed_tools_list)])
             logger.debug(f"Enabled tools from config: {allowed_tools_list}")
 
@@ -145,7 +149,12 @@ class ClaudeCLIWrapper:
 
         # Legacy support for programmatic allowed_tools parameter
         elif allowed_tools:
+            cmd.extend(["--tools", ",".join(allowed_tools)])
             cmd.extend(["--allowed-tools", " ".join(allowed_tools)])
+        else:
+            # No tools at all. Read/Glob/Grep would otherwise be available, and
+            # bypassPermissions applies no path restriction to them.
+            cmd.extend(["--tools", ""])
 
         # Disallowed tools from config or parameter
         disallowed_list = [

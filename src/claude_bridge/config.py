@@ -76,7 +76,13 @@ class Settings(BaseSettings):
     # Application settings
     app_name: str = "Claude Bridge"
     debug: bool = False
-    host: str = "0.0.0.0"
+    # Loopback by default: the bridge has no authentication of its own, so anything
+    # that can reach the port can spend your credentials.
+    host: str = "127.0.0.1"
+
+    # Comma-separated CORS origins. Empty means no cross-origin access, so a page in
+    # the operator's browser cannot drive a local instance.
+    cors_allow_origins_str: str = ""
     port: int = 8080
 
     # Logging / observability

@@ -16,7 +16,7 @@ class TestSettings:
 
             assert settings.app_name == "Claude Bridge"
             assert settings.debug is False
-            assert settings.host == "0.0.0.0"
+            assert settings.host == "127.0.0.1"
             assert settings.port == 8080
             assert settings.log_level == "info"
             assert settings.log_json is False
@@ -26,6 +26,7 @@ class TestSettings:
             assert settings.claude_disallowed_tools is None
             assert settings.claude_allowed_tools_str == ""
             assert settings.claude_disallowed_tools_str == DEFAULT_DISALLOWED_TOOLS
+            assert settings.cors_allow_origins_str == ""
             assert settings.claude_process_timeout_seconds == 300
             assert settings.claude_stream_idle_timeout_seconds == 180
             assert settings.claude_process_kill_grace_seconds == 5

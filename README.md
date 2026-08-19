@@ -152,7 +152,7 @@ claude-bridge --allowed-tools Read --allowed-directories /tmp
 ### 2. Understand Security Implications
 
 **What you're allowing:**
-- `CLAUDE_ALLOWED_TOOLS_STR=Read` - pre-approves the Read tool for file upload
+- `CLAUDE_ALLOWED_TOOLS_STR=Read` - makes Read available, for file upload only
 - `CLAUDE_ALLOWED_DIRECTORIES_STR=/tmp` - the directories Claude may reach
 - `CLAUDE_PERMISSION_MODE=bypassPermissions` - No interactive permission prompts (required for API mode). Informational only: the bridge always passes this mode regardless of the setting.
 
@@ -172,16 +172,22 @@ configuration and an HTTP caller reaches whatever that exposes.
 - ❌ Claude **cannot** spawn subagents, schedule cron jobs, or send messages
 - ❌ Claude **cannot** reach your MCP servers
 
-**What is NOT protected — file reads are not confined to any directory.** Under
-`bypassPermissions` the CLI applies no path restriction to `Read`/`Glob`/`Grep`, and
-`--add-dir` only *adds* directories rather than limiting them. A caller can read any
-file the server process can read — `.env`, `~/.claude/.credentials.json`, SSH and cloud
-credentials — and have the contents returned in the response body. Run the bridge as a
-user that cannot read anything sensitive, and do not expose the port.
+This matters because `bypassPermissions` applies **no path restriction** to
+`Read`/`Glob`/`Grep`, and `--add-dir` only *adds* directories rather than limiting them.
+Had those tools stayed available, a caller could read any file the server process can —
+`.env`, `~/.claude/.credentials.json`, SSH and cloud credentials — and get the contents
+back in the response body. The bridge therefore passes `--tools ""`, so they are not
+available at all. Enabling file upload swaps that for `--tools Read`, which is the
+minimum the feature needs; `Grep` stays out because it reads file contents too.
 
-**Also not protected:** the deny-list only names tools that exist today. A CLI upgrade
-that adds a tool grants it to every caller of this API until it is listed. Re-check
-after upgrading. Treat every prompt that reaches this API as untrusted input —
+**What is still not protected:** `--tools` gates the CLI's *built-in* set, so a tool
+supplied by local configuration outside that set can survive it. The bridge also has no
+authentication of its own — it binds to `127.0.0.1` by default, and anything that can
+reach the port can spend your credentials. Put your own auth in front of it before
+binding it anywhere else.
+
+The deny-list underneath is defense-in-depth, and it only names tools that exist today;
+`--tools` is what bounds a tool a future CLI adds. Treat every prompt that reaches this API as untrusted input —
 instructions hidden in an uploaded document are indistinguishable from the
 caller's own.
 

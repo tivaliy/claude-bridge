@@ -59,6 +59,7 @@ class ClaudeClient:
             allowed_tools=settings.claude_allowed_tools,
             disallowed_tools=settings.claude_disallowed_tools,
             stream=stream,
+            file_paths=kwargs.get("file_paths"),
         ):
             yield response
 

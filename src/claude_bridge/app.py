@@ -46,11 +46,15 @@ def create_app() -> FastAPI:
     )
 
     # Add CORS middleware
+    # allow_credentials is off: paired with a wildcard origin Starlette ignores the
+    # wildcard anyway, and the combination is what would let a browser page drive
+    # a local instance with the caller's cookies.
+    cors_origins = [o.strip() for o in settings.cors_allow_origins_str.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
+        allow_origins=cors_origins,
+        allow_credentials=False,
+        allow_methods=["POST", "GET", "OPTIONS"],
         allow_headers=["*"],
     )
 
