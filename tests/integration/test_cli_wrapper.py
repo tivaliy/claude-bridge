@@ -48,6 +48,67 @@ class TestCLIWrapperCommandBuilding:
             assert denied.isdisjoint({"Read", "Glob", "Grep"})
 
     @pytest.mark.asyncio
+    async def test_no_tools_are_available_by_default(self, mock_subprocess_process):
+        """A plain request gets no built-in tools, so it has no filesystem access.
+
+        bypassPermissions applies no path restriction to Read/Glob/Grep, so the
+        only thing that keeps a caller away from .env is that they do not exist.
+        """
+        cli = ClaudeCLIWrapper()
+        process = mock_subprocess_process(returncode=0, stdout=json.dumps({"result": "test"}))
+
+        with patch("asyncio.create_subprocess_exec", return_value=process) as mock_exec:
+            async for _ in cli.query("Hello"):
+                pass
+
+            cmd = list(mock_exec.call_args[0])
+            i = cmd.index("--tools")
+            assert cmd[i + 1] == ""
+            # --tools is variadic, so an empty value must be followed by a flag or it
+            # would swallow whatever comes next.
+            assert i + 2 == len(cmd) or cmd[i + 2].startswith("--")
+            assert "--add-dir" not in cmd
+
+    @pytest.mark.asyncio
+    async def test_file_upload_makes_only_read_available(
+        self, mock_subprocess_process, tmp_path, monkeypatch
+    ):
+        """Upload grants Read and nothing else; Grep would read file contents too."""
+        monkeypatch.setattr(
+            "claude_bridge.core.cli_wrapper.settings.claude_allowed_tools_str", "Read"
+        )
+        monkeypatch.setattr(
+            "claude_bridge.core.cli_wrapper.settings.claude_allowed_directories_str", str(tmp_path)
+        )
+        upload = tmp_path / "img.png"
+        upload.write_bytes(b"x")
+
+        cli = ClaudeCLIWrapper()
+        process = mock_subprocess_process(returncode=0, stdout=json.dumps({"result": "test"}))
+        with patch("asyncio.create_subprocess_exec", return_value=process) as mock_exec:
+            async for _ in cli.query("Describe it", file_paths=[upload]):
+                pass
+
+            cmd = list(mock_exec.call_args[0])
+            assert cmd[cmd.index("--tools") + 1] == "Read"
+            assert str(tmp_path) in cmd
+            assert "Grep" not in cmd[cmd.index("--tools") + 1]
+
+    @pytest.mark.asyncio
+    async def test_file_upload_without_config_is_refused(
+        self, mock_subprocess_process, tmp_path, monkeypatch
+    ):
+        """The upload guards are reachable now that file_paths is forwarded."""
+        monkeypatch.setattr("claude_bridge.core.cli_wrapper.settings.claude_allowed_tools_str", "")
+        upload = tmp_path / "img.png"
+        upload.write_bytes(b"x")
+
+        cli = ClaudeCLIWrapper()
+        with pytest.raises(ValueError, match="CLAUDE_ALLOWED_TOOLS_STR"):
+            async for _ in cli.query("Describe it", file_paths=[upload]):
+                pass
+
+    @pytest.mark.asyncio
     async def test_strict_mcp_config_can_be_disabled(self, mock_subprocess_process):
         cli = ClaudeCLIWrapper()
         process = mock_subprocess_process(returncode=0, stdout=json.dumps({"result": "test"}))

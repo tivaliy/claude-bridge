@@ -160,3 +160,29 @@ class TestClaudeClientInitialization:
         # Should use default CLI path
         assert client.cli.cli_path == "claude"
         assert client.cli.cwd is None
+
+
+class TestFilePathsForwarding:
+    """file_paths was silently swallowed by **kwargs, so upload never reached the CLI."""
+
+    @pytest.mark.asyncio
+    async def test_file_paths_reach_the_cli_wrapper(self, tmp_path):
+        from unittest.mock import AsyncMock, patch
+
+        from claude_bridge.core.claude_client import ClaudeClient
+
+        upload = tmp_path / "doc.pdf"
+        upload.write_bytes(b"x")
+
+        client = ClaudeClient()
+
+        async def fake_query(*args, **kwargs):
+            fake_query.kwargs = kwargs
+            yield {"result": "ok"}
+
+        with patch.object(client.cli, "query", new=AsyncMock(side_effect=fake_query)):
+            with patch.object(client.cli, "query", new=fake_query):
+                async for _ in client.query("hi", file_paths=[upload]):
+                    pass
+
+        assert fake_query.kwargs["file_paths"] == [upload]
