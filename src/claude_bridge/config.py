@@ -5,6 +5,70 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Tools denied to the CLI unless the operator overrides
+# CLAUDE_DISALLOWED_TOOLS_STR.
+#
+# Why a deny-list and not an allow-list: under --permission-mode bypassPermissions
+# the CLI's --allowed-tools flag pre-approves tools but does not withhold the rest,
+# so Bash and Write stay reachable however narrow the allow-list is. Only
+# --disallowed-tools actually withholds a tool. That makes this list the security
+# boundary, and it has to be enumerated rather than derived.
+#
+# What survives: Read, Glob, Grep — enough for the file-upload path, none of which
+# executes, mutates, persists, or reaches the network.
+#
+# LIMITATION: a deny-list cannot cover tools that do not exist yet. A CLI upgrade
+# that adds a tool grants it to every caller of this API until it is added here.
+# To re-check on upgrade, ask the CLI what it kept:
+#   echo "List every tool name you have available, one per line." \
+#     | claude --print --strict-mcp-config --permission-mode bypassPermissions \
+#         --disallowed-tools "<the names below, space-separated>"
+# Stale names are reported too: the CLI warns on stderr per unmatched deny rule
+# ("matches no known tool"), which is how the dead MultiEdit entry was found.
+DEFAULT_DISALLOWED_TOOLS = ",".join(
+    (
+        # Execution and mutation
+        "Bash",
+        "Write",
+        "Edit",
+        "NotebookEdit",
+        # Network egress
+        "WebFetch",
+        "WebSearch",
+        # Delegation — a subagent is a fresh tool surface this list cannot reach
+        "Agent",
+        "Task",
+        "TaskCreate",
+        "TaskGet",
+        "TaskList",
+        "TaskOutput",
+        "TaskStop",
+        "TaskUpdate",
+        "Workflow",
+        "Skill",
+        "ToolSearch",
+        "ListAgents",
+        # Anything that outlives the request, or speaks to someone
+        "CronCreate",
+        "CronDelete",
+        "CronList",
+        "ScheduleWakeup",
+        "Monitor",
+        "SendMessage",
+        "RemoteTrigger",
+        "PushNotification",
+        "ShareOnboardingGuide",
+        "DesignSync",
+        "ReportFindings",
+        "EnterWorktree",
+        "ExitWorktree",
+        # MCP plumbing — belt and braces alongside --strict-mcp-config
+        "ListMcpResourcesTool",
+        "ReadMcpResourceTool",
+        "ReadMcpResourceDirTool",
+    )
+)
+
 
 class Settings(BaseSettings):
     """Application settings."""
@@ -41,10 +105,16 @@ class Settings(BaseSettings):
     # Example: "Read" to enable image/PDF analysis
     claude_allowed_tools_str: str = ""
 
-    # Comma-separated list of disallowed tools (optional)
-    claude_disallowed_tools_str: str = ""
+    # Comma-separated. Treat every prompt reaching this API as untrusted input —
+    # instructions hidden in an uploaded document are indistinguishable from the
+    # caller's own. See DEFAULT_DISALLOWED_TOOLS above for why this list, and not
+    # the allow-list, is the security boundary. Setting this replaces the default;
+    # "" lifts the restriction entirely.
+    claude_disallowed_tools_str: str = DEFAULT_DISALLOWED_TOOLS
 
-    # Permission mode for non-interactive API usage
+    # Permission mode for non-interactive API usage.
+    # NOTE: not currently honored — cli_wrapper always passes bypassPermissions,
+    # which is the only mode an HTTP caller can work under (it cannot answer a prompt).
     # - bypassPermissions: Skip interactive prompts (required for API mode)
     # - default: Interactive mode (will fail in API context)
     # - acceptEdits: Auto-accept edit operations
@@ -55,6 +125,12 @@ class Settings(BaseSettings):
     # Example: "/tmp" or "/tmp,/var/app-temp"
     # User MUST explicitly configure this for image/PDF upload to work
     claude_allowed_directories_str: str = ""
+
+    # Load no MCP servers unless they are passed explicitly. Without this the CLI
+    # inherits the operator's personal MCP configuration, so an HTTP caller reaches
+    # whatever those servers expose — measured: a browser-automation server was
+    # callable through this API on a stock developer machine.
+    claude_strict_mcp_config: bool = True
 
     # Process management / safety
     # Maximum time (seconds) to allow a single non-streaming CLI invocation to run
@@ -68,7 +144,6 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        # Allow ANTHROPIC_API_KEY to be read from environment
         env_prefix="",
     )
 

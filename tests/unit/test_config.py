@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from unittest.mock import patch
 
-from claude_bridge.config import Settings
+from claude_bridge.config import DEFAULT_DISALLOWED_TOOLS, Settings
 
 
 class TestSettings:
@@ -24,6 +24,8 @@ class TestSettings:
             assert settings.claude_cwd is None
             assert settings.claude_allowed_tools is None
             assert settings.claude_disallowed_tools is None
+            assert settings.claude_allowed_tools_str == ""
+            assert settings.claude_disallowed_tools_str == DEFAULT_DISALLOWED_TOOLS
             assert settings.claude_process_timeout_seconds == 300
             assert settings.claude_stream_idle_timeout_seconds == 180
             assert settings.claude_process_kill_grace_seconds == 5

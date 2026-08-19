@@ -80,10 +80,15 @@ class ClaudeCLIWrapper:
         # Build command
         cmd = [self.cli_path, "--print"]
 
-        # Use bypassPermissions mode for non-interactive API usage
-        # This is more targeted than --dangerously-skip-permissions
-        # Combined with --allowed-tools and --add-dir, this provides minimal necessary access
+        # An HTTP caller cannot answer a permission prompt, so this is the only workable
+        # mode. It also means --allowed-tools withholds nothing; see
+        # DEFAULT_DISALLOWED_TOOLS in config.py.
         cmd.extend(["--permission-mode", "bypassPermissions"])
+
+        # With no accompanying --mcp-config this loads no servers at all, rather than
+        # inheriting the operator's own MCP configuration. See config.py.
+        if settings.claude_strict_mcp_config:
+            cmd.append("--strict-mcp-config")
 
         # Add output format
         if stream:
@@ -143,11 +148,9 @@ class ClaudeCLIWrapper:
             cmd.extend(["--allowed-tools", " ".join(allowed_tools)])
 
         # Disallowed tools from config or parameter
-        disallowed_list = []
-        if settings.claude_disallowed_tools_str.strip():
-            disallowed_list.extend(
-                [t.strip() for t in settings.claude_disallowed_tools_str.split(",") if t.strip()]
-            )
+        disallowed_list = [
+            t.strip() for t in settings.claude_disallowed_tools_str.split(",") if t.strip()
+        ]
         if disallowed_tools:
             disallowed_list.extend(disallowed_tools)
 

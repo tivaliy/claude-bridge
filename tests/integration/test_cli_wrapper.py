@@ -30,6 +30,38 @@ class TestCLIWrapperCommandBuilding:
             assert "bypassPermissions" in cmd
 
     @pytest.mark.asyncio
+    async def test_default_hardening_flags_are_applied(self, mock_subprocess_process):
+        """Every invocation withholds the dangerous tools and loads no MCP servers."""
+        cli = ClaudeCLIWrapper()
+        process = mock_subprocess_process(returncode=0, stdout=json.dumps({"result": "test"}))
+
+        with patch("asyncio.create_subprocess_exec", return_value=process) as mock_exec:
+            async for _ in cli.query("Hello"):
+                pass
+
+            cmd = mock_exec.call_args[0]
+            assert "--strict-mcp-config" in cmd
+
+            denied = set(cmd[cmd.index("--disallowed-tools") + 1].split())
+            assert {"Bash", "Write", "Edit", "WebFetch", "CronCreate", "Workflow"} <= denied
+            # The file-upload path still needs these.
+            assert denied.isdisjoint({"Read", "Glob", "Grep"})
+
+    @pytest.mark.asyncio
+    async def test_strict_mcp_config_can_be_disabled(self, mock_subprocess_process):
+        cli = ClaudeCLIWrapper()
+        process = mock_subprocess_process(returncode=0, stdout=json.dumps({"result": "test"}))
+
+        with (
+            patch("claude_bridge.core.cli_wrapper.settings.claude_strict_mcp_config", False),
+            patch("asyncio.create_subprocess_exec", return_value=process) as mock_exec,
+        ):
+            async for _ in cli.query("Hello"):
+                pass
+
+            assert "--strict-mcp-config" not in mock_exec.call_args[0]
+
+    @pytest.mark.asyncio
     async def test_streaming_mode_flags(self, mock_subprocess_process):
         cli = ClaudeCLIWrapper()
         process = mock_subprocess_process(returncode=0)

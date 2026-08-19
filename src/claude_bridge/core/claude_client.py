@@ -15,11 +15,11 @@ class ClaudeClient:
         """
         Initialize Claude client using CLI wrapper.
 
-        Note: The Claude CLI will use authentication in this order:
-        1. Existing Claude CLI authentication (claude setup-token)
-        2. ANTHROPIC_API_KEY environment variable
-        3. AWS Bedrock credentials
-        4. Google Vertex AI credentials
+        Note: the bridge passes no credentials; the CLI resolves its own, and
+        ANTHROPIC_API_KEY takes precedence over a claude.ai/subscription login
+        (an invalid key fails with 401 rather than falling back to it). Bedrock
+        and Vertex credentials are also honored. See README -> Authentication for
+        which of these is a supported way to run the bridge.
         """
         self.cli = ClaudeCLIWrapper(
             cli_path=settings.claude_cli_path,

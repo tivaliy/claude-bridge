@@ -6,6 +6,11 @@ API gateway that intercepts Claude Code CLI and exposes it through Anthropic Mes
 
 Claude Bridge wraps the Claude Code CLI (not the SDK) and exposes it through an Anthropic-compatible REST API. It acts as an interceptor, translating HTTP API requests into CLI subprocess calls. Each request is handled as a single, stateless task to Claude Code.
 
+Run it with an `ANTHROPIC_API_KEY` in the environment. The CLI can also run on a
+Pro/Max subscription token, but Anthropic's terms reserve that credential for ordinary
+interactive use of Claude Code rather than for fronting an API — see
+[Authentication](#authentication) before choosing.
+
 ## Features
 
 - **CLI Interceptor** - Wraps Claude Code CLI, not the Python SDK
@@ -14,7 +19,8 @@ Claude Bridge wraps the Claude Code CLI (not the SDK) and exposes it through an 
 - **Streaming support** - Server-Sent Events (SSE) for real-time responses
 - **Stateless architecture** - Each request is independent
 - **No SDK dependency** - Direct subprocess calls to `claude` CLI
-- **Full Claude Code capabilities** - All CLI features available
+- **Locked down by default** - Tools that execute, mutate, delegate, persist, or reach
+  the network are withheld, and no MCP servers are loaded (see [Security Implications](#2-understand-security-implications))
 
 ## Quick Start (No Installation Required)
 
@@ -38,7 +44,9 @@ This will download, install, and run the server in an isolated environment.
 - **uv** (recommended) - Fast Python package installer and runner: `pip install uv`
 - **Claude CLI** - Install from [claude.com](https://claude.com)
   - The `claude` command must be available in your PATH
-  - Authenticate using: `claude setup-token`
+- **An Anthropic API key** - `export ANTHROPIC_API_KEY=sk-ant-...`
+  - See [Authentication](#authentication) for why this, and not `claude setup-token`,
+    is the supported way to run the bridge
 
 ### Option 1: Run with uvx (Recommended - No Installation)
 
@@ -144,14 +152,38 @@ claude-bridge --allowed-tools Read --allowed-directories /tmp
 ### 2. Understand Security Implications
 
 **What you're allowing:**
-- `CLAUDE_ALLOWED_TOOLS_STR=Read` - Claude can **read files** (but not write/execute)
-- `CLAUDE_ALLOWED_DIRECTORIES_STR=/tmp` - Claude can **only access** `/tmp` directory
-- `CLAUDE_PERMISSION_MODE=bypassPermissions` - No interactive permission prompts (required for API mode)
+- `CLAUDE_ALLOWED_TOOLS_STR=Read` - pre-approves the Read tool for file upload
+- `CLAUDE_ALLOWED_DIRECTORIES_STR=/tmp` - the directories Claude may reach
+- `CLAUDE_PERMISSION_MODE=bypassPermissions` - No interactive permission prompts (required for API mode). Informational only: the bridge always passes this mode regardless of the setting.
 
-**What is protected:**
-- ❌ Claude **cannot** execute code (no Bash tool)
-- ❌ Claude **cannot** modify files (no Write/Edit tools)
-- ❌ Claude **cannot** access other directories (only those you specify)
+**What actually protects you — `CLAUDE_DISALLOWED_TOOLS_STR`, not the allow-list.**
+
+Under `bypassPermissions` the allow-list pre-approves the tools you name but does
+not withhold the rest: with `--allowed-tools Read`, Bash and Write are still
+reachable. Only the deny-list withholds a tool. The bridge therefore ships a
+secure default (`DEFAULT_DISALLOWED_TOOLS` in `config.py`) that withholds every
+tool which executes, mutates, delegates to a subagent, outlives the request, or
+reaches the network, leaving Read/Glob/Grep. It also passes `--strict-mcp-config`
+so no MCP server is loaded — otherwise the CLI inherits the operator's own MCP
+configuration and an HTTP caller reaches whatever that exposes.
+
+**What is protected (with the defaults):**
+- ❌ Claude **cannot** execute code, write files, or browse the web
+- ❌ Claude **cannot** spawn subagents, schedule cron jobs, or send messages
+- ❌ Claude **cannot** reach your MCP servers
+
+**What is NOT protected — file reads are not confined to any directory.** Under
+`bypassPermissions` the CLI applies no path restriction to `Read`/`Glob`/`Grep`, and
+`--add-dir` only *adds* directories rather than limiting them. A caller can read any
+file the server process can read — `.env`, `~/.claude/.credentials.json`, SSH and cloud
+credentials — and have the contents returned in the response body. Run the bridge as a
+user that cannot read anything sensitive, and do not expose the port.
+
+**Also not protected:** the deny-list only names tools that exist today. A CLI upgrade
+that adds a tool grants it to every caller of this API until it is listed. Re-check
+after upgrading. Treat every prompt that reaches this API as untrusted input —
+instructions hidden in an uploaded document are indistinguishable from the
+caller's own.
 
 ### 3. Adjust for Your Environment
 
@@ -240,18 +272,62 @@ curl -X POST http://localhost:8000/anthropic/v1/messages \
 
 #### Authentication
 
-The bridge uses the Claude CLI's existing authentication. Make sure you've authenticated:
+The bridge does not authenticate anything itself — it inherits whatever credentials
+the `claude` CLI runs under. The CLI accepts two, and **which one you use determines
+whether running this bridge is permitted at all.**
+
+##### Supported: API key
 
 ```bash
-# Authenticate Claude CLI
-claude setup-token
+export ANTHROPIC_API_KEY=sk-ant-...
+claude-bridge
+```
 
-# Verify it works
+Get a key from the [Claude Console](https://platform.claude.com/). Usage bills to
+that key and falls under Anthropic's
+[Commercial Terms](https://www.anthropic.com/legal/commercial-terms), which is the
+agreement that covers programmatic access. `apiKeyHelper` works too if you resolve
+keys dynamically. This is the mode to use for anything that is not a single person
+poking at the bridge on their own laptop — any deployment, any shared instance,
+anything backing an application, anything with more than one user.
+
+##### Not supported for applications: subscription OAuth
+
+The CLI can also authenticate against a Claude Pro/Max subscription via
+`claude setup-token`, and the bridge will happily run that way. Anthropic's
+[Claude Code legal terms](https://code.claude.com/docs/en/legal-and-compliance)
+are explicit about what that credential is for:
+
+> **OAuth authentication** is intended **exclusively** for purchasers of Claude Free,
+> Pro, Max, Team, and Enterprise subscription plans and is designed to support
+> **ordinary use of Claude Code** and other native Anthropic applications.
+>
+> **Developers** building products or services that interact with Claude's
+> capabilities, including those using the Agent SDK, **should use API key
+> authentication** through Claude Console or a supported cloud provider. Anthropic
+> does not permit third-party developers to offer Claude.ai login or to **route
+> requests through Free, Pro, or Max plan credentials on behalf of their users**.
+
+Two consequences worth being clear about:
+
+- Fronting a subscription token with an HTTP API is not "ordinary use of Claude
+  Code," even with one user on one machine. If you do it, understand that is the
+  posture you are in.
+- Standing this up for anyone but yourself — a team instance, a hosted endpoint, a
+  product backend — is the case the terms name outright. Don't.
+
+Anthropic "reserves the right to take measures to enforce these restrictions and may
+do so without prior notice," and enforcement lands on the subscription account. Set
+`ANTHROPIC_API_KEY` and the question does not arise.
+
+The bridge logs a warning at startup when it finds no API key in the environment.
+
+##### Verify either way
+
+```bash
 claude --version
 claude --print "Hello, Claude!"
 ```
-
-The bridge will automatically use the CLI's credentials. No need to configure API keys separately!
 
 ### API Endpoints
 
@@ -328,7 +404,7 @@ The bridge is fully compatible with the official Anthropic Python SDK. Simply co
 import anthropic
 
 client = anthropic.AsyncAnthropic(
-    api_key="not-needed",  # Bridge uses CLI authentication
+    api_key="not-needed",  # Not checked by the bridge; the CLI holds the real credential
     base_url="http://localhost:8000/anthropic"
 )
 
@@ -350,7 +426,10 @@ message = await client.messages.create(
 print(message.content[0].text)
 ```
 
-**Note:** The bridge does not validate API keys. Authentication is handled by the Claude CLI itself via `claude setup-token`.
+**Note:** The bridge does not validate the `api_key` you pass here, and it is not an
+access control — anything that can reach the port can spend your credentials. Bind it
+to localhost, or put your own auth in front of it. The real credential is whichever one
+the `claude` CLI is running under; see [Authentication](#authentication).
 
 ## Development
 
