@@ -65,6 +65,18 @@ class TestMessagesRequest:
         assert req.top_p == 0.9
         assert req.top_k == 50
 
+    def test_system_accepts_text_block_list(self):
+        req = MessagesRequest(
+            model="claude-sonnet-4",
+            messages=[Message(role="user", content="Hello")],
+            system=[
+                {"type": "text", "text": "You are helpful."},
+                {"type": "text", "text": "Be terse."},
+            ],
+        )
+        assert req.system is not None
+        assert [block.text for block in req.system] == ["You are helpful.", "Be terse."]
+
     def test_max_tokens_minimum_constraint(self):
         with pytest.raises(ValidationError):
             MessagesRequest(

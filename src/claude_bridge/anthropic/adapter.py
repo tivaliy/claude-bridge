@@ -177,7 +177,7 @@ class AnthropicMessageAdapter:
     async def messages_to_prompt(
         cls,
         messages: list[Message],
-        system: str | None = None,
+        system: str | list[Any] | None = None,
     ) -> tuple[str, str | None, list[Path]]:
         """
         Convert Anthropic messages to Claude CLI prompt format with conversation context.
@@ -187,11 +187,17 @@ class AnthropicMessageAdapter:
 
         Args:
             messages: List of Anthropic Message objects
-            system: Optional system prompt from request
+            system: Optional system prompt from request, as a string or as the
+                list-of-text-blocks form the Messages API also accepts
 
         Returns:
             Tuple of (prompt, system_prompt, temp_files)
         """
+        # The CLI takes one --append-system-prompt string, so collapse the block
+        # form here. An empty block list flattens to "" and is treated as unset.
+        if isinstance(system, list):
+            system = cls._extract_text_content(system) or None
+
         if not messages:
             logger.debug("No messages provided to adapter; returning empty prompt")
             return "", system, []
