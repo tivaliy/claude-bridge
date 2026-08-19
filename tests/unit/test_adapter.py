@@ -27,6 +27,27 @@ class TestMessagesToPrompt:
         assert system == "You are a helpful assistant."
 
     @pytest.mark.asyncio
+    async def test_system_prompt_as_text_blocks_is_flattened(self):
+        messages = [Message(role="user", content="What is 2+2?")]
+        system_blocks = [
+            {"type": "text", "text": "You are a helpful assistant."},
+            {"type": "text", "text": "Answer with a number only."},
+        ]
+        prompt, system, _ = await AnthropicMessageAdapter.messages_to_prompt(
+            messages, system_blocks
+        )
+
+        assert prompt == "What is 2+2?"
+        assert system == "You are a helpful assistant.\nAnswer with a number only."
+
+    @pytest.mark.asyncio
+    async def test_empty_system_block_list_is_treated_as_unset(self):
+        messages = [Message(role="user", content="What is 2+2?")]
+        _, system, _ = await AnthropicMessageAdapter.messages_to_prompt(messages, [])
+
+        assert system is None
+
+    @pytest.mark.asyncio
     async def test_multiple_messages_builds_context(self):
         messages = [
             Message(role="user", content="Hello"),

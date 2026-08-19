@@ -64,7 +64,10 @@ class MessagesRequest(BaseModel):
     metadata: dict[str, Any] | None = None
     stop_sequences: list[str] | None = None
     stream: bool = False
-    system: str | None = None
+    # The Messages API accepts a system prompt either as a plain string or as a
+    # list of text blocks; SDK clients that build it from several instruction
+    # sources send the block form. Blocks are flattened by the adapter.
+    system: str | list[TextContentBlock] | None = None
     temperature: float | None = Field(default=None, ge=0.0, le=1.0)
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
     top_k: int | None = Field(default=None, ge=0)
